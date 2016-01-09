@@ -1,0 +1,258 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>Discogify</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <link type="text/css" href="styles.css" rel="stylesheet" />
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+    <script src="lib/underscore-min.js"></script>
+    <link href="dist/sp-bootstrap.min.css" rel="stylesheet" media="screen">
+</head>
+
+<body>
+<div class="modal fade">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+        <h4 class="modal-title">Modal title</h4>
+      </div>
+      <div class="modal-body">
+        <p>One fine body…</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary">Save changes</button>
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+    <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+      <div class="container">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="index.html"><span>Discogify</span></a>
+        </div>
+        <div class="collapse navbar-collapse">
+          <ul id="options" class="nav navbar-nav navbar-right">
+              <li><a class="option" 
+                href="#" 
+                id='show-about'>&nbsp;</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+
+    <div id="search" class="hero-unit">
+       <div class="container">
+          <div id="intro">
+            <h1>Discogify</h1>
+            <p class="lead">Import Spotify playlists to you Discogs wantlist</p>
+            <div id="search-form" class="form-inline">
+                <span class="xform-control">
+                    <button class="btn btn-info btn-large" id='go' type="button">Load my playlists</button>
+                </span>
+            </div>
+            <div id="info"> </div>
+           </div>
+        </div>
+    </div>
+
+
+    <div id="main" class="container">
+        <h1> Saved Playlists for <span id="who"> </span></h1>
+        <hr>
+        <div id="item-list"> </div>
+    </div>
+
+    <div id="footer">
+      <hr>
+      <div class="container">
+      <small>
+        <p class="muted credit">Created by <a href="http://twitter.com/rsearle">@rsearle</a>. 
+        Powered by <a href="http://spotify.com">Spotify</a> &amp; <a href="http://www.discogs.com/">Discogs</a>. Source on <a
+        href="https://github.com/hypertrifle/discogify">github</a>.
+        </p>
+      </small>
+      </div>
+    </div>
+
+</div>
+
+<script>
+"use strict";
+
+var accessToken = null;
+
+function error(msg) {
+    info(msg);
+}
+
+function info(msg) {
+    $("#info").text(msg);
+}
+
+function authorizeUser() {
+    var client_id = '5ea9e144800f4083b08a4f7aaf54ac9a';
+    var redirect_uri = 'http://localhost:8000';
+    var url = 'https://accounts.spotify.com/authorize?client_id=' + client_id +
+        '&response_type=token' +
+        '&scope=user-library-read' +
+        '&redirect_uri=' + encodeURIComponent(redirect_uri);
+    document.location = url;
+
+}
+
+function parseArgs() {
+    var hash = location.hash.replace(/#/g, '');
+    var all = hash.split('&');
+    var args = {};
+    _.each(all, function(keyvalue) {
+        var kv = keyvalue.split('=');
+        var key = kv[0];
+        var val = kv[1];
+        args[key] = val;
+    });
+    return args;
+}
+
+function fetchCurrentUserProfile(callback) {
+    var url = 'https://api.spotify.com/v1/me';
+    callSpotify(url, null, callback);
+}
+
+function fetchSavedTracks(callback) {
+    var url = 'https://api.spotify.com/v1/me/tracks';
+    callSpotify(url, {}, callback);
+}
+
+function fetchPlaylistsForUser(callback) {
+   var url = 'https://api.spotify.com/v1/me/playlists';
+   callSpotify(url, {}, callback); 
+}
+
+
+function fetchTracksInPlaylist(endpoint, callback) {
+    var url = endpoint;
+    callSpotify(url, {}, callback); 
+
+}
+
+function callSpotify(url, data, callback) {
+    $.ajax(url, {
+        dataType: 'json',
+        data: data,
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        },
+        success: function(r) {
+            callback(r);
+        },
+        error: function(r) {
+            callback(null);
+        }
+    });
+}
+
+function showTracks(tracks) {
+    var list = $("#item-list");
+
+    console.log('show tracks', tracks);
+    if (tracks.offset == 0) {
+        $("#main").show();
+        $("#intro").hide();
+        $("#item-list").empty();
+        info("");
+    }
+    _.each(tracks.items, function(item) {
+        var artistName = item.track.artists[0].name;
+        var itemElement = $("<div>").text(item.track.name + ' - ' + artistName);
+        list.append(itemElement);
+    });
+
+    if (tracks.next) {
+        callSpotify(tracks.next, {}, function(tracks) {
+            showTracks(tracks);
+        });
+    }
+}
+function showPlaylists(playlists) {
+    var list = $("#item-list");
+
+    //console.log('show playlists', playlists);
+    if (playlists.offset == 0) {
+        $("#main").show();
+        $("#intro").hide();
+        $("#item-list").empty();
+        info("");
+    }
+    _.each(playlists.items, function(item) {
+        //var artistName = item.track.artists[0].name;
+        //var itemElement = $("<div>").text(item.name + ' - ' + item.id);
+        var itemElement = $("<a />", {
+            id : item.id,
+            tracklist : item.tracks.href,
+            name : "link",
+            href : "#",
+            text : item.name
+        });
+        list.append(itemElement);
+    });
+
+    if (playlists.next) {
+        callSpotify(playlists.next, {}, function(playlists) {
+            showPlaylists(playlists);
+        });
+    }
+}
+
+$(document).ready(
+    function() {
+        var args = parseArgs();
+
+        if ('access_token' in args) {
+            accessToken = args['access_token'];
+            $("#go").hide();
+            info('Getting your user profile');
+            fetchCurrentUserProfile(function(user) {
+                if (user) {
+                    $("#who").text(user.id);
+                    info('Getting your playlists');
+                    fetchPlaylistsForUser(function(data) {
+                        if (data) {
+                            //console.log(data);
+                            showPlaylists(data);
+                        } else {
+                            error("Trouble getting your saved tracks");
+                        }
+                    });
+                } else {
+                    error("Trouble getting the user profile");
+                }
+            });
+        } else {
+            $("#go").show();
+            $("#go").on('click', function() {
+                authorizeUser();
+            });
+        }
+
+        $( "#item-list" ).on( "click", "a", function(e) {
+          console.log( "clicked Playlist:" + $( this ).attr("id")  );
+
+          fetchTracksInPlaylist($(this).attr("tracklist"), function(data) {
+            showTracks(data);
+          });
+          return false;
+        });
+    }
+
+
+
+);
+
+</script>
+<script src="//netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+</body>
+</html>
